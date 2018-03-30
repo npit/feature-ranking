@@ -2,6 +2,7 @@
 
 import subprocess
 from subprocess import Popen, PIPE
+import pandas
 
 # functions
 #------------------------------
@@ -52,28 +53,52 @@ def do_normalized_bow():
             print("%d/%d : %s" % (i+1, len(idxs), j), idxs_names[j])
 
 
-def do_naive_bayes():
-    basecmd="java -cp  /usr/share/java/weka/weka.jar  weka.classifiers.bayes.NaiveBayes -t "
-    print("Need to specify both train and test")
-    exit(1)
-    for datafile in data_naivebayes:
-        cmd = basecmd + datafile
+def do_naive_bayes(num_instances):
+    basecmd="java -cp  /usr/share/java/weka/weka.jar  weka.classifiers.bayes.NaiveBayes "
+    data = []
+
+    for (train, test) in data_naivebayes:
+        cmd = "%s -t %s -T %s" % (basecmd, train, test) + " -classifications CSV"
         output = run_bash(cmd)
+        with open("temp.txt", "w") as f:
+            f.write(output)
+        df = pandas.read_csv("temp.txt", skiprows=3)
+        df = df.sort_values(by='prediction', ascending=False)
+        first_n = pandas.DataFrame.head(df, n=num_instances)
+        (index, predicted, confidence) = list(first_n['inst#']), list(first_n['predicted']), list(first_n['prediction'])
+
+
+        if not raw_data:
+            exit(1)
+        with open(raw_data) as f:
+            for line in f:
+                data.append(line.strip())
+        print("num total prediction datum")
+        for i in range(num_instances):
+            ind, pred, conf = index[i], predicted[i], confidence[i]
+            print("%d/%d: 2.4f |  %s" % (ind, len(data), data[ind]))
+
 
 #------------------------------
 # end of functions
 
 # globals
 #------------------------------
-# read files index-name information
+# Information gain:
+# files index-name information
 names_infgain = ["../files_march28/Binucleotides.names", "../files_march28/Trinucleotides.names"]
+# data for information gain
 data_infgain = ["binucleotides-data.arff","trinucleotides-data.arff"]
-idxs_names_infgain = readNgramNames(names_infgain)
-data_naivebayes = ["./HMM_probabilities_for_each_class.arff"]
+# instance sorting:
+# data for naive bayes (train/test)
+raw_data = ''
+data_naivebayes = [("./HMM_probabilities_for_each_class.arff", "./HMM_probabilities_for_each_class.arff")]
+num_instances = 100
 #------------------------------
 
 # inf gain
-do_normalized_bow()
-do_naive_bayes()
+idxs_names_infgain = readNgramNames(names_infgain)
+#do_normalized_bow()
+do_naive_bayes(num_instances)
 
 # other stuff
