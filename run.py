@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
+import pandas
+import os
 import subprocess
 from subprocess import Popen, PIPE
-import pandas
 
 # functions
 #------------------------------
@@ -29,54 +30,64 @@ def run_bash(cmd):
         print(err.decode('utf-8'))
         exit(1)
     output = output.decode("utf-8")
-    print(output)
+    #print(output)
     return output
+
 
 def do_normalized_bow():
     # information gain only meaningful for full-vectored Normalized BOW
     print("Normalized BOW features")
 
     idxs = None
-    basecmd = "java -cp  /usr/share/java/weka/weka.jar weka.attributeSelection.InfoGainAttributeEval -s weka.attributeSelection.Ranker  -i "
+    basecmd = "java -cp  /usr/share/java/weka/weka.jar weka.attributeSelection.InfoGainAttributeEval  -s weka.attributeSelection.Ranker  -i "
 
     for (datafile, idxs_names) in zip(data_infgain, idxs_names_infgain):
+        parsing_ranked = False
+        num_parsed = 0
+        ranked = []
         cmd = basecmd + datafile
         output = run_bash(cmd)
-        for line in output.split("\n"):
-            if line.startswith("Selected attributes"):
-                idxs = line.split()[2].split(",")
-                break
-
-        print(datafile,":")
+        print(output)
+        
+        print(datafile, ":")
         print("Rank index name")
-        for i, j in enumerate(idxs):
-            print("%d/%d : %s" % (i+1, len(idxs), j), idxs_names[j])
+        for line in output.split("\n"):
+            if line.startswith("Ranked attributes:"):
+                parsing_ranked = True
+                continue
+            if parsing_ranked:
+                if num_parsed >= num_infgain:
+                    break
+                line = line.strip()
+                if not line:
+                    break
+                score, idx, _, _ = line.split()
+                name = idxs_names[idx]
+                print("%d/%d : %s %s" % \
+                      (num_parsed+1, num_infgain, idx, name))
+                num_parsed +=1
 
 
 def do_naive_bayes(num_instances):
     basecmd="java -cp  /usr/share/java/weka/weka.jar  weka.classifiers.bayes.NaiveBayes "
     data = []
 
-    for (train, test) in data_naivebayes:
-        cmd = "%s -t %s -T %s" % (basecmd, train, test) + " -classifications CSV"
+    for dataset in data_naivebayes:
+        cmd = "%s -t %s -x 2" % (basecmd, dataset) + " -classifications CSV"
         output = run_bash(cmd)
-        with open("temp.txt", "w") as f:
+        respath = os.path.basename(dataset)+".predictions.txt"
+        with open(respath, "w") as f:
             f.write(output)
-        df = pandas.read_csv("temp.txt", skiprows=3)
+        df = pandas.read_csv(respath, skiprows=3)
         df = df.sort_values(by='prediction', ascending=False)
         first_n = pandas.DataFrame.head(df, n=num_instances)
         (index, predicted, confidence) = list(first_n['inst#']), list(first_n['predicted']), list(first_n['prediction'])
+        num_data = len(index)
 
-
-        if not raw_data:
-            exit(1)
-        with open(raw_data) as f:
-            for line in f:
-                data.append(line.strip())
         print("num total prediction datum")
         for i in range(num_instances):
             ind, pred, conf = index[i], predicted[i], confidence[i]
-            print("%d/%d: 2.4f |  %s" % (ind, len(data), data[ind]))
+            print("%d/%d: %d | %2.4f " % (i+1, num_data, ind, conf))
 
 
 #------------------------------
@@ -86,19 +97,22 @@ def do_naive_bayes(num_instances):
 #------------------------------
 # Information gain:
 # files index-name information
+num_infgain = 16
 names_infgain = ["../files_march28/Binucleotides.names", "../files_march28/Trinucleotides.names"]
-# data for information gain
+# data (norm. bow) for information gain
 data_infgain = ["binucleotides-data.arff","trinucleotides-data.arff"]
+
 # instance sorting:
 # data for naive bayes (train/test)
 raw_data = ''
-data_naivebayes = [("./HMM_probabilities_for_each_class.arff", "./HMM_probabilities_for_each_class.arff")]
+# norm. bow (tri, bi), NGG
+data_naivebayes = ["binucleotides-data.arff", "trinucleotides-data.arff", "/home/nik/work/iit/submissions/eccb18/features/NGG_feats_all.arff"]
 num_instances = 100
 #------------------------------
 
 # inf gain
 idxs_names_infgain = readNgramNames(names_infgain)
-#do_normalized_bow()
-do_naive_bayes(num_instances)
+do_normalized_bow()
+#do_naive_bayes(num_instances)
 
 # other stuff
